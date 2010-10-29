@@ -1,0 +1,7 @@
+; $Id$
+name = Nodereference Image Formatter
+description = Formats referenced node as image
+core = 6.x
+package = CCK
+dependencies[] = filefield
+dependencies[] = nodereference

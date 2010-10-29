@@ -1,0 +1,242 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * This module is a CCK formatter for nodereference nodes. Supports ImageCache presets, Lightbox2 and Colorbox module.
+ *
+ * WARNINGS: 1. Experimental module! Currently supports only one single value image field.
+ *
+ *           2. Image field name is hardcoded - change NREFID_IMAGE_CCK_FIELD constant if your fieldname is different.
+ *
+ * Modules with similar functionality:
+ *  - Nodereference Image Helper (http://drupal.org/project/noderef_image_helper)
+ *  - Node Reference Variables (http://drupal.org/project/nodereference_variables)
+ *
+ * @author Vojtech Kusy <wojtha@gmail.com>
+ */
+
+/**
+ * @var string Hardcoded image field used for uploading images to the web
+ */
+define('NREFID_IMAGE_CCK_FIELD', 'field_image');
+
+
+/**
+* Implementation of hook_field_formatter_info().
+*/
+function nref_image_display_field_formatter_info() {
+  $formatters = array();
+  $imagecache = $lightbox = $slideshow = $colorbox = array();
+
+  if (module_exists('nodereference') && module_exists('filefield')) {
+    $formatters['image'] = array(
+        'label' => t('Image'),
+        'field types' => array('nodereference'),
+        'multiple values' => CONTENT_HANDLE_CORE,
+    );
+
+    if (module_exists('imagecache')) {
+      $presets = imagecache_presets();
+
+      foreach($presets as $preset) {
+        $name = $preset['presetname'];
+        $imagecache['imagecache__' . $name] = array(
+          'label' => 'Imagecache: ' . $name,
+          'field types' => array('nodereference'),
+        );
+        $imagecache['imagecache_link_node__' . $name] = array(
+          'label' => 'Imagecache: ' . $name . ' (link to node)',
+          'field types' => array(
+            'nodereference'
+          )
+        );
+        $imagecache['imagecache_link_image__' . $name] = array(
+          'label' => 'Imagecache: ' . $name . ' (link to image node)',
+          'field types' => array(
+            'nodereference'
+          )
+        );
+
+        if (module_exists('lightbox2')) {
+          $lightbox['lightbox2__' . $name . '__original'] = array(
+            'label' => 'Lightbox2: ' . $name . '->original',
+            'field types' => array('nodereference'),
+          );
+          $slideshow['slideshow__'. $name .'__original'] = array(
+            'label' => 'Lightbox2: (slideshow) '. $name .'->original',
+            'field types' => array('nodereference'),
+          );
+          foreach($presets as $preset2) {
+            $name2 = $preset2['presetname'];
+            $lightbox['lightbox2__'. $name .'__'. $name2] = array(
+              'label' => 'Lightbox2: '. $name .'->'. $name2,
+              'field types' => array('nodereference'),
+            );
+            $slideshow['slideshow__'. $name .'__'. $name2] = array(
+              'label' => 'Lightbox2: (slideshow) '. $name .'->'. $name2,
+              'field types' => array('nodereference'),
+            );
+          }
+        }
+
+        if (module_exists('colorbox')) {
+          $colorbox['colorbox__' . $name] = array(
+            'label' => 'Colorbox: ' . $name,
+            'field types' => array('nodereference'),
+          );
+        }
+      }
+    }
+  }
+
+  $formatters = array_merge($imagecache, $lightbox, $slideshow, $colorbox);
+  return $formatters;
+}
+
+/**
+* Implementation of hook_theme().
+*/
+function nref_image_display_theme($existing, $type, $theme, $path) {
+  $theme = array(
+    'nref_image_display_formatter_image' => array(
+      'arguments' => array('element' => NULL),
+    ),
+  );
+
+  $presets = imagecache_presets();
+  $theme_formatters = array();
+
+  foreach($presets as $preset) {
+    $name = $preset['presetname'];
+    $theme_formatters[] = 'imagecache__' . $name;
+    $theme_formatters[] = 'imagecache_link_node__' . $name;
+    $theme_formatters[] = 'imagecache_link_image__' . $name;
+
+    if (module_exists('lightbox2')) {
+      $theme_formatters[] = 'lightbox2__' . $name . '__original';
+      $theme_formatters[] = 'slideshow__'. $name .'__original';
+      foreach($presets as $preset2) {
+        $name2 = $preset2['presetname'];
+        $theme_formatters[] = 'lightbox2__'. $name .'__'. $name2;
+        $theme_formatters[] = 'slideshow__'. $name .'__'. $name2;
+      }
+    }
+
+    if (module_exists('colorbox')) {
+      $theme_formatters[] = 'colorbox__' . $name;
+    }
+  }
+
+  foreach ($theme_formatters as $theme_function) {
+    $theme['nref_image_display_formatter_'. $theme_function] = array(
+      'function' => 'theme_nref_image_display_formatter',
+      'arguments' => array('element' => NULL),
+    );
+  }
+
+  return $theme;
+}
+
+/**
+ * Helper function to identify field db table storage name - useful for CCK custom queries.
+ *
+ * @param string $field_name
+ * @return string
+ *    Table name or FALSE
+ */
+function get_cck_field_table($field_name) {
+
+  if (($field = content_fields($field_name)) && ($db_info = content_database_info($field))) {
+    return $db_info['table'];
+  }
+
+  return FALSE;
+}
+
+/**
+ * Function which get image from referenced node
+ *
+ * @param int $nid
+ * @return array|FALSE
+ *   an array with file information or FALSE
+ */
+function nref_image_display_formatter_get_refnode_image($nid) {
+  if ($table = get_cck_field_table(NREFID_IMAGE_CCK_FIELD)) {
+    $sql = 'SELECT f.* FROM {'. $table .'} im LEFT JOIN files f ON im.'. $field .'_fid = f.fid WHERE im.nid = %d';
+    if ($file = db_fetch_array(db_query($sql, $nid))) {
+      return $file;
+    }
+  }
+
+  return FALSE;
+}
+
+/**
+* Theme function for formatter from hook_field_formatter_info.
+ *
+* @param $element
+*   an array of formatter info and the item to theme. look in $element['#item'] for the field item to theme.
+*/
+function theme_nref_image_display_formatter_image($element) {
+  //dpm($element);
+  $nid = $element['#item']['nid'];
+  $title = $element['#item']['safe']['title'];
+
+  // TODO move it to some better place ... maybe content_field caching?
+  $file = nref_image_display_formatter_get_refnode_image($nid);
+
+  if (!$file) {
+    return '';
+  }
+
+  return theme('image', $file['filepath'], $title, $title, $attributes = NULL, $getsize = TRUE);
+}
+
+/**
+* Theme function for formatter from hook_field_formatter_info.
+ *
+* @param $element
+*   an array of formatter info and the item to theme. look in $element['#item'] for the field item to theme.
+*/
+function theme_nref_image_display_formatter($element) {
+  $nid = $element['#item']['nid'];
+  $title = $element['#item']['safe']['title'];
+
+  // TODO move it to some better place ... maybe content_field caching?
+  $file = nref_image_display_formatter_get_refnode_image($nid);
+
+  if (!$file) {
+    return '';
+  }
+
+  // load file information to the $element['#item']
+  $element['#item'] += $file;
+
+  list($type, $par1, $par2) = explode('__', $element['#formatter']);
+
+  // override $element attributes to be accepted with original theme functions
+  switch ($type) {
+    case 'imagecache':
+      $theme_function = 'imagecache_formatter_'. $par1 .'_default';
+      $element['#formatter'] = $par1 .'_default';
+      break;
+    case 'imagecache_link_image':
+      $theme_function = 'imagecache_formatter_'. $par1 .'_imagelink';
+      $element['#formatter'] = $par1 .'_imagelink';
+      break;
+    case 'imagecache_link_node':
+      $theme_function = 'imagecache_formatter_'. $par1 .'_linked';
+      $element['#formatter'] = $par1 .'_linked';
+      $element['#item']['nid'] = $element['#node']->nid;
+      $element['#item']['title'] = $element['#node']->title;
+      break;
+    case 'colorbox':
+      //$function = 'colorbox_formatter_imagefield';
+      $theme_function = 'colorbox_formatter_'. $par1 .'__colorbox';
+      $element['#formatter'] = $par1 .'__colorbox';
+      break;
+  }
+
+  return theme($theme_function, $element);
+}
