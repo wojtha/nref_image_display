@@ -162,7 +162,8 @@ function get_cck_field_table($field_name) {
  *   an array with file information or FALSE
  */
 function nref_image_display_formatter_get_refnode_image($nid) {
-  if ($table = get_cck_field_table(NREFID_IMAGE_CCK_FIELD)) {
+  $field = NREFID_IMAGE_CCK_FIELD;
+  if ($table = get_cck_field_table($field)) {
     $sql = 'SELECT f.* FROM {'. $table .'} im LEFT JOIN files f ON im.'. $field .'_fid = f.fid WHERE im.nid = %d';
     if ($file = db_fetch_array(db_query($sql, $nid))) {
       return $file;
